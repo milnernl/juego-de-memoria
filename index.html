@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Juego de Memoria | Milner Noguera</title>
+    <!-- Tailwind + Font Awesome -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* Flip card styles */
+        .flip-card {
+            background-color: transparent;
+            perspective: 1000px;
+            cursor: pointer;
+        }
+        .flip-card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+            border-radius: 1rem;
+        }
+        .flip-card.flipped .flip-card-inner {
+            transform: rotateY(180deg);
+        }
+        .flip-card-front, .flip-card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+        }
+        .flip-card-front {
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border: 2px solid #38bdf8;
+            transform: rotateY(180deg);
+        }
+        .flip-card-back {
+            background: linear-gradient(135deg, #334155, #1e293b);
+            border: 2px solid #475569;
+            font-size: 2rem;
+            color: #94a3b8;
+        }
+        .matched {
+            visibility: hidden;
+            opacity: 0;
+            transition: visibility 0.2s, opacity 0.2s;
+            pointer-events: none;
+        }
+        .matched .flip-card-inner {
+            transform: rotateY(180deg);
+        }
+        /* Override matched visibility for inner content */
+        .matched .flip-card-front {
+            visibility: visible;
+            opacity: 1;
+        }
+        .matched .flip-card-back {
+            visibility: hidden;
+        }
+        /* disable pointer events while waiting */
+        .disable-click {
+            pointer-events: none;
+        }
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e1a2f 100%);
+            min-height: 100vh;
+        }
+        .card-container {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        @media (max-width: 640px) {
+            .flip-card-front, .flip-card-back {
+                font-size: 1.8rem;
+            }
+            .flip-card-back {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div class="min-h-screen flex flex-col items-center justify-center px-4 py-8">
+        <div class="text-center mb-6">
+            <h1 class="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-sky-400 to-indigo-500 bg-clip-text text-transparent">
+                🧠 Juego de Memoria
+            </h1>
+            <p class="text-slate-300 mt-2">Encuentra los pares iguales</p>
+        </div>
+
+        <!-- Panel de estadísticas -->
+        <div class="flex justify-between items-center w-full max-w-md bg-slate-800/50 backdrop-blur rounded-2xl p-4 mb-8">
+            <div class="text-center">
+                <p class="text-slate-400 text-sm">Movimientos</p>
+                <p id="moveCounter" class="text-2xl font-bold text-white">0</p>
+            </div>
+            <div class="text-center">
+                <p class="text-slate-400 text-sm">Pares encontrados</p>
+                <p id="matchedCounter" class="text-2xl font-bold text-white">0</p>
+            </div>
+            <button id="restartBtn" class="bg-sky-600 hover:bg-sky-500 text-white px-5 py-2 rounded-full transition flex items-center gap-2 text-sm font-medium shadow-lg">
+                <i class="fas fa-rotate-right"></i> Reiniciar
+            </button>
+        </div>
+
+        <!-- Grid de cartas -->
+        <div id="memoryGrid" class="grid grid-cols-4 gap-3 md:gap-4 card-container w-full"></div>
+
+        <!-- Mensaje de victoria -->
+        <div id="winMessage" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 hidden transition-all">
+            <div class="bg-slate-800 rounded-2xl p-8 text-center max-w-sm mx-4 border border-sky-500 shadow-2xl">
+                <i class="fas fa-trophy text-5xl text-yellow-400 mb-4"></i>
+                <h2 class="text-2xl font-bold text-white mb-2">¡Felicidades!</h2>
+                <p class="text-slate-300 mb-4">Completaste el juego en <span id="finalMoves" class="text-sky-400 font-bold"></span> movimientos.</p>
+                <button id="playAgainBtn" class="bg-gradient-to-r from-sky-500 to-indigo-600 text-white px-6 py-2 rounded-full font-medium hover:opacity-90 transition">Jugar de nuevo</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Lista de iconos (8 pares) usando FontAwesome
+        const iconList = [
+            'fa-cat', 'fa-dog', 'fa-fish', 'fa-kiwi-bird',
+            'fa-apple-alt', 'fa-crown', 'fa-star', 'fa-heart'
+        ];
+
+        let cards = [];
+        let flippedCards = [];    // almacena índices de cartas volteadas temporalmente
+        let lockBoard = false;
+        let moves = 0;
+        let matchedCount = 0;
+        let totalPairs = iconList.length;
+
+        const gridElement = document.getElementById('memoryGrid');
+        const moveCounterSpan = document.getElementById('moveCounter');
+        const matchedCounterSpan = document.getElementById('matchedCounter');
+        const restartBtn = document.getElementById('restartBtn');
+        const winMessageDiv = document.getElementById('winMessage');
+        const finalMovesSpan = document.getElementById('finalMoves');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+
+        // Inicializar juego
+        function initGame() {
+            // Duplicar y mezclar
+            let deck = [...iconList, ...iconList];
+            deck = shuffleArray(deck);
+            cards = deck.map((icon, index) => ({
+                id: index,
+                icon: icon,
+                matched: false,
+                flipped: false
+            }));
+            flippedCards = [];
+            lockBoard = false;
+            moves = 0;
+            matchedCount = 0;
+            updateStats();
+            renderBoard();
+            hideWinMessage();
+        }
+
+        // Fisher-Yates shuffle
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // Actualizar contadores en UI
+        function updateStats() {
+            moveCounterSpan.innerText = moves;
+            matchedCounterSpan.innerText = matchedCount;
+        }
+
+        // Renderizar tablero
+        function renderBoard() {
+            gridElement.innerHTML = '';
+            cards.forEach((card, idx) => {
+                const cardDiv = document.createElement('div');
+                cardDiv.className = `flip-card aspect-square ${card.flipped || card.matched ? 'flipped' : ''} ${card.matched ? 'matched' : ''}`;
+                cardDiv.setAttribute('data-idx', idx);
+                
+                const inner = document.createElement('div');
+                inner.className = 'flip-card-inner';
+                
+                // Frente (icono)
+                const front = document.createElement('div');
+                front.className = 'flip-card-front';
+                const icon = document.createElement('i');
+                icon.className = `fas ${card.icon} text-3xl md:text-5xl text-sky-300`;
+                front.appendChild(icon);
+                
+                // Reverso (símbolo de pregunta)
+                const back = document.createElement('div');
+                back.className = 'flip-card-back';
+                const question = document.createElement('i');
+                question.className = 'fas fa-question text-3xl md:text-5xl text-slate-400';
+                back.appendChild(question);
+                
+                inner.appendChild(front);
+                inner.appendChild(back);
+                cardDiv.appendChild(inner);
+                
+                if (!card.matched) {
+                    cardDiv.addEventListener('click', () => onCardClick(idx));
+                }
+                
+                gridElement.appendChild(cardDiv);
+            });
+        }
+
+        // Manejar clic en carta
+        function onCardClick(clickedIdx) {
+            if (lockBoard) return;
+            const card = cards[clickedIdx];
+            if (card.matched) return;
+            if (card.flipped) return; // ya volteada
+            
+            // Si ya hay dos cartas volteadas esperando, no permitir más hasta resolver
+            if (flippedCards.length === 2) return;
+            
+            // Voltear carta
+            card.flipped = true;
+            renderBoard(); // re-render para mostrar el flip
+            
+            flippedCards.push(clickedIdx);
+            
+            // Si tenemos dos cartas, comprobar match
+            if (flippedCards.length === 2) {
+                lockBoard = true;
+                moves++;
+                updateStats();
+                
+                const idx1 = flippedCards[0];
+                const idx2 = flippedCards[1];
+                const card1 = cards[idx1];
+                const card2 = cards[idx2];
+                
+                if (card1.icon === card2.icon) {
+                    // Match
+                    card1.matched = true;
+                    card2.matched = true;
+                    card1.flipped = false; // ya no está "flipped" porque está matched
+                    card2.flipped = false;
+                    matchedCount++;
+                    updateStats();
+                    
+                    // Limpiar array de volteadas
+                    flippedCards = [];
+                    lockBoard = false;
+                    renderBoard();
+                    
+                    // Verificar victoria
+                    if (matchedCount === totalPairs) {
+                        showWinMessage();
+                    }
+                } else {
+                    // No match: esperar un momento y voltear de nuevo
+                    setTimeout(() => {
+                        card1.flipped = false;
+                        card2.flipped = false;
+                        flippedCards = [];
+                        lockBoard = false;
+                        renderBoard();
+                    }, 800);
+                }
+            }
+        }
+
+        function showWinMessage() {
+            finalMovesSpan.innerText = moves;
+            winMessageDiv.classList.remove('hidden');
+        }
+        
+        function hideWinMessage() {
+            winMessageDiv.classList.add('hidden');
+        }
+        
+        function restartGame() {
+            initGame();
+        }
+        
+        // Eventos
+        restartBtn.addEventListener('click', () => {
+            restartGame();
+        });
+        
+        playAgainBtn.addEventListener('click', () => {
+            restartGame();
+            hideWinMessage();
+        });
+        
+        // Iniciar
+        initGame();
+    </script>
+</body>
+</html>

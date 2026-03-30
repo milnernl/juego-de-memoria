@@ -35,5 +35,3 @@ No requiere servidor ni dependencias externas (solo conexión a internet para ca
 - Si coinciden, las cartas permanecen descubiertas y suman un punto.
 - Si no coinciden, se volverán a ocultar después de 0.8 segundos.
 - El objetivo es emparejar todas las cartas con el menor número de movimientos posible.
-
-## 🧩 Estructura del proyecto
